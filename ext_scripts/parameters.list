@@ -1,0 +1,2 @@
+origin Snapshot to create the image from
+reuse_data Whether or not to create a new RBD volume on create
