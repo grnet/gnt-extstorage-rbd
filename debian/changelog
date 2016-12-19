@@ -1,0 +1,5 @@
+ganeti-extstorage-rbd (0.0-wheezy) unstable; urgency=low
+
+  * New upstream version
+
+ -- Filippos Giannakos <philipgian@grnet.gr>  Wed, 12 Oct 2016 12:40:14 +0300

@@ -1,0 +1,14 @@
+Source: ganeti-extstorage-rbd
+Section: otherosfs
+Priority: extra
+Maintainer: Filippos Giannakos <philipgian@grnet.gr>
+Build-Depends: debhelper (>= 7.0.50~), dh-python, python, cmake(>=2.8)
+Standards-Version: 3.9.6
+X-Python-Version: >=2.6
+
+Package: ganeti-extstorage-rbd
+Architecture: any
+Depends: ${misc:Depends}, python(>=2.6), ceph-common
+Description:  Provides ext storage scripts for RBD
+ Provides ext storage scripts for RBD.
+
