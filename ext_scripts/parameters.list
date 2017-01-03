@@ -1,2 +1,3 @@
 origin Snapshot to create the image from
 reuse_data Whether or not to create a new RBD volume on create
+rbd_pool RBD pool to use for the RBD volumes

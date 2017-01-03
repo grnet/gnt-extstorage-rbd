@@ -31,6 +31,7 @@ The following variables are optional:
  - EXTP_ORIGIN: The name of the Image file to snapshot
  - EXTP_REUSE_DATA: An indication to RBD that it should not create a new volume
    but reuse an existing one
+ - EXTP_RBD_POOL: The pool that the RBD volume resides
 
 The code branches to the correct function, depending on the name (sys.argv[0])
 of the executed script (attach, create, etc).
@@ -73,6 +74,15 @@ class RBD(object):
     RBD_CMD = 'rbd'
 
     @staticmethod
+    def format_name(name, pool=None, snapshot=None):
+        image_name = name
+        if pool is not None:
+            image_name = pool + '/' + image_name
+        if snapshot is not None:
+            image_name = image_name + '@' + snapshot
+        return image_name
+
+    @staticmethod
     def exc(*args):
         rc, stdout, stderr = doexec([RBD.RBD_CMD] + list(args))
         out, err = stdout.read().strip(), stderr.read().strip()
@@ -84,13 +94,17 @@ class RBD(object):
         return out
 
     @staticmethod
-    def list():
-        return json.loads(RBD.exc('showmapped', '--format', 'json'))
+    def list(pool=None):
+        mappings = json.loads(RBD.exc('showmapped', '--format', 'json'))
+        if pool:
+            return {k: v for k, v in mappings.iteritems() if v['pool'] == pool}
+        else:
+            return mappings
 
     @staticmethod
-    def get_device(image):
+    def get_device(image, pool=None):
         """ Return the device the image is mapped else None"""
-        list = RBD.list()
+        list = RBD.list(pool=pool)
         for mapping in list.itervalues():
             if mapping['name'] == image:
                 return mapping['device']
@@ -98,8 +112,11 @@ class RBD(object):
         return None
 
     @staticmethod
-    def create(image, size, image_format=None, image_features=None):
+    def create(image, size, pool=None, image_format=None, image_features=None):
         """ Map an image to an RBD device """
+
+        image = RBD.format_name(image, pool=pool)
+
         args = []
         if image_format is not None:
             args.append('--image_format')
@@ -108,27 +125,30 @@ class RBD(object):
             args.append('--image_features')
             args.append(image_features)
 
-        return RBD.exc("create", image, '--size', str(size), *args)
+        return RBD.exc('create', image, '--size', str(size), *args)
 
     @staticmethod
-    def map(image):
+    def map(image, pool=None):
         """ Map an image to an RBD device """
-        return RBD.exc("map", image)
+        image = RBD.format_name(image, pool=pool)
+        return RBD.exc('map', image)
 
     @staticmethod
     def unmap(device):
         """ Unmap an RBD device """
-        return RBD.exc("unmap", device)
+        return RBD.exc('unmap', device)
 
     @staticmethod
-    def resize(image, size):
+    def resize(image, size, pool=None):
         """ Unmap an RBD device """
-        return RBD.exc("resize", image, "--size", size)
+        image = RBD.format_name(image, pool=pool)
+        return RBD.exc('resize', image, '--size', size)
 
     @staticmethod
-    def remove(image):
+    def remove(image, pool=None):
         """ Remove an RBD image """
-        return RBD.exc("rm", image)
+        image = RBD.format_name(image, pool=pool)
+        return RBD.exc('rm', image)
 
 
 def read_env():
@@ -148,6 +168,7 @@ def read_env():
             "origin": os.getenv("EXTP_ORIGIN"),
             "snapshot_name": os.getenv("VOL_SNAPSHOT_NAME"),
             "reuse_data": reuse_data,
+            "pool": os.getenv("EXTP_RBD_POOL"),
             }
 
 
@@ -157,9 +178,11 @@ def create(env):
     size = env.get("size")
     origin = env.get("origin")
     reuse_data = env.get("reuse_data")
+    pool = env.get("pool")
 
     if reuse_data:
-        sys.stderr.write("Reusing previous data for %s\n" % name)
+        sys.stderr.write("Reusing previous data for %s\n"
+                         % RBD.format_name(name, pool=pool))
         return 0
 
     if origin:
@@ -167,8 +190,8 @@ def create(env):
         return 1
     else:
         sys.stderr.write("Creating volume '%s' of size '%s'\n"
-                         % (name, size))
-        RBD.create(name, size)
+                         % (RBD.format_name(name, pool=pool), size))
+        RBD.create(name, size, pool=pool)
     return 0
 
 
@@ -195,13 +218,15 @@ def attach(env):
     """
 
     name = env.get("name")
+    pool = env.get("pool")
     device = RBD.get_device(name)
     if device is None:
-        device = RBD.map(name)
-        sys.stderr.write("Mapped image '%s' to '%s' \n" % (name, device))
+        device = RBD.map(name, pool=pool)
+        sys.stderr.write("Mapped image '%s' to '%s' \n"
+                         % (RBD.format_name(name, pool=pool), device))
     else:
         sys.stderr.write("Image '%s' already mapped to device '%s' \n"
-                         % (name, device))
+                         % (RBD.format_name(name, pool=pool), device))
 
     sys.stdout.write("%s" % device)
     return 0
@@ -216,11 +241,12 @@ def detach(env):
 
     """
     name = env.get("name")
-    device = RBD.get_device(name)
+    pool = env.get("pool")
+    device = RBD.get_device(name, pool=pool)
     if device:
         RBD.unmap(device)
 
-    sys.stderr.write("Unmapped %s\n" % name)
+    sys.stderr.write("Unmapped %s\n" % RBD.format_name(name, pool=pool))
     return 0
 
 
@@ -228,9 +254,11 @@ def grow(env):
     """Grow an existing RBD Image"""
     name = env.get("name")
     size = env.get("size")
+    pool = env.get("pool")
 
-    sys.stderr.write("Resizing '%s'. New size '%s'\n" % (name, size))
-    RBD.resize(name, size)
+    sys.stderr.write("Resizing '%s'. New size '%s'\n"
+                     % (RBD.format_name(name, pool=pool), size))
+    RBD.resize(name, size, pool=pool)
     return 0
 
 
@@ -242,8 +270,9 @@ def remove(env):
     for larger images.
     """
     name = env.get("name")
-    sys.stderr.write("Deleting '%s'\n" % name)
-    RBD.remove(name)
+    pool = env.get("pool")
+    sys.stderr.write("Deleting '%s'\n" % RBD.format_name(name, pool=pool))
+    RBD.remove(name, pool=pool)
     return 0
 
 
