@@ -32,6 +32,10 @@ The following variables are optional:
  - EXTP_REUSE_DATA: An indication to RBD that it should not create a new volume
    but reuse an existing one
  - EXTP_RBD_POOL: The pool that the RBD volume resides
+ - EXTP_IMAGE_FORMAT: The image format of the new RBD volume
+ - EXTP_IMAGE_FEATURES: The enabled features of the new RBD volume
+ - EXTP_STRIPE_UNIT Size (in bytes) of a block of data
+ - EXTP_STRIPE_COUNT Number of consecutive objects in a stripe
 
 The code branches to the correct function, depending on the name (sys.argv[0])
 of the executed script (attach, create, etc).
@@ -112,18 +116,25 @@ class RBD(object):
         return None
 
     @staticmethod
-    def create(image, size, pool=None, image_format=None, image_features=None):
+    def create(image, size, pool=None, image_format=None, image_features=None,
+               stripe_unit=None, stripe_count=None):
         """ Map an image to an RBD device """
 
         image = RBD.format_name(image, pool=pool)
 
         args = []
         if image_format is not None:
-            args.append('--image_format')
-            args.append(image_format)
+            args.append('--image-format')
+            args.append(str(image_format))
         if image_features is not None:
-            args.append('--image_features')
-            args.append(image_features)
+            args.append('--image-features')
+            args.append(str(image_features))
+        if stripe_unit is not None:
+            args.append('--stripe-unit')
+            args.append(str(stripe_unit))
+        if stripe_count is not None:
+            args.append('--stripe-count')
+            args.append(str(stripe_count))
 
         return RBD.exc('create', image, '--size', str(size), *args)
 
@@ -169,6 +180,10 @@ def read_env():
             "snapshot_name": os.getenv("VOL_SNAPSHOT_NAME"),
             "reuse_data": reuse_data,
             "pool": os.getenv("EXTP_RBD_POOL"),
+            "image_format": os.getenv("EXTP_IMAGE_FORMAT"),
+            "image_features": os.getenv("EXTP_IMAGE_FEATURES"),
+            "stripe_unit": os.getenv("EXTP_STRIPE_UNIT"),
+            "stripe_count": os.getenv("EXTP_STRIPE_COUNT"),
             }
 
 
@@ -179,6 +194,10 @@ def create(env):
     origin = env.get("origin")
     reuse_data = env.get("reuse_data")
     pool = env.get("pool")
+    image_format = env.get("image_format")
+    image_features = env.get("image_features")
+    stripe_unit = env.get("stripe_unit")
+    stripe_count = env.get("stripe_count")
 
     if reuse_data:
         sys.stderr.write("Reusing previous data for %s\n"
@@ -191,7 +210,9 @@ def create(env):
     else:
         sys.stderr.write("Creating volume '%s' of size '%s'\n"
                          % (RBD.format_name(name, pool=pool), size))
-        RBD.create(name, size, pool=pool)
+        RBD.create(name, size, pool=pool, image_format=image_format,
+                   image_features=image_features, stripe_unit=stripe_unit,
+                   stripe_count=stripe_count)
     return 0
 
 
