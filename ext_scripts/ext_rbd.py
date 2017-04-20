@@ -32,6 +32,12 @@ The following variables are optional:
  - EXTP_REUSE_DATA: An indication to RBD that it should not create a new volume
    but reuse an existing one
  - EXTP_RBD_POOL: The pool that the RBD volume resides
+ - EXTP_CEPHX_ID Specifies the username (without the client. prefix) to use
+   with the map command
+ - EXTP_CEPHX_KEYRING Specifies a keyring file containing a secret for the
+   specified user to use with the map command
+ - EXTP_CEPHX_KEYFILE Specifies a file containing the secret key of --id user
+   to use with the map command
  - EXTP_IMAGE_FORMAT: The image format of the new RBD volume
  - EXTP_IMAGE_FEATURES: The enabled features of the new RBD volume
  - EXTP_STRIPE_UNIT Size (in bytes) of a block of data
@@ -51,6 +57,7 @@ import json
 import re
 
 TRUE_PATTERN = '^(yes|true|on|1|set)$'
+PREFIX_EXTP = 'EXTP_'
 
 
 def cmd_open(cmd, bufsize=-1, env=None):
@@ -87,8 +94,8 @@ class RBD(object):
         return image_name
 
     @staticmethod
-    def exc(*args):
-        rc, stdout, stderr = doexec([RBD.RBD_CMD] + list(args))
+    def _exc(args):
+        rc, stdout, stderr = doexec([RBD.RBD_CMD] + args)
         out, err = stdout.read().strip(), stderr.read().strip()
         stdout.close()
         stderr.close()
@@ -98,17 +105,42 @@ class RBD(object):
         return out
 
     @staticmethod
-    def list(pool=None):
-        mappings = json.loads(RBD.exc('showmapped', '--format', 'json'))
+    def exc(cephx, *args):
+        args = list(args)
+        if cephx:
+            cephx_args = []
+            if cephx.get('id') is not None:
+                id = str(cephx.get('id'))
+                cephx_args.append('--id')
+                cephx_args.append(id)
+                sys.stderr.write("Using cephx id %s\n" % id)
+            if cephx.get('keyring') is not None:
+                keyring = str(cephx.get('keyring'))
+                cephx_args.append('--keyring')
+                cephx_args.append(keyring)
+                sys.stderr.write("Using cephx keyring %s\n" % keyring)
+            if cephx.get('keyfile') is not None:
+                keyfile = str(cephx.get('keyfile'))
+                cephx_args.append('--keyfile')
+                cephx_args.append(keyfile)
+                sys.stderr.write("Using cephx keyfile %s\n" % keyfile)
+
+            args = cephx_args + args
+
+        return RBD._exc(args)
+
+    @staticmethod
+    def list(pool=None, cephx=None):
+        mappings = json.loads(RBD.exc(cephx, 'showmapped', '--format', 'json'))
         if pool:
             return {k: v for k, v in mappings.iteritems() if v['pool'] == pool}
         else:
             return mappings
 
     @staticmethod
-    def get_device(image, pool=None):
+    def get_device(image, pool=None, cephx=None):
         """ Return the device the image is mapped else None"""
-        list = RBD.list(pool=pool)
+        list = RBD.list(pool=pool, cephx=cephx)
         for mapping in list.itervalues():
             if mapping['name'] == image:
                 return mapping['device']
@@ -117,7 +149,7 @@ class RBD(object):
 
     @staticmethod
     def create(image, size, pool=None, image_format=None, image_features=None,
-               stripe_unit=None, stripe_count=None):
+               stripe_unit=None, stripe_count=None, cephx=None):
         """ Map an image to an RBD device """
 
         image = RBD.format_name(image, pool=pool)
@@ -136,30 +168,30 @@ class RBD(object):
             args.append('--stripe-count')
             args.append(str(stripe_count))
 
-        return RBD.exc('create', image, '--size', str(size), *args)
+        return RBD.exc(cephx, 'create', image, '--size', str(size), *args)
 
     @staticmethod
-    def map(image, pool=None):
+    def map(image, pool=None, cephx=None):
         """ Map an image to an RBD device """
         image = RBD.format_name(image, pool=pool)
-        return RBD.exc('map', image)
+        return RBD.exc(cephx, 'map', image)
 
     @staticmethod
-    def unmap(device):
+    def unmap(device, cephx=None):
         """ Unmap an RBD device """
-        return RBD.exc('unmap', device)
+        return RBD.exc(cephx, 'unmap', device)
 
     @staticmethod
-    def resize(image, size, pool=None):
+    def resize(image, size, pool=None, cephx=None):
         """ Unmap an RBD device """
         image = RBD.format_name(image, pool=pool)
-        return RBD.exc('resize', image, '--size', size)
+        return RBD.exc(cephx, 'resize', image, '--size', size)
 
     @staticmethod
-    def remove(image, pool=None):
+    def remove(image, pool=None, cephx=None):
         """ Remove an RBD image """
         image = RBD.format_name(image, pool=pool)
-        return RBD.exc('rm', image)
+        return RBD.exc(cephx, 'rm', image)
 
 
 def read_env():
@@ -169,22 +201,33 @@ def read_env():
         sys.stderr.write('The environment variable VOL_CNAME is missing.\n')
         return None
 
+    extp_params = {}
+    for k, v in os.environ.iteritems():
+        if k.startswith(PREFIX_EXTP):
+            extp_params[k[len(PREFIX_EXTP):].lower()] = v
+
     reuse_data = False
-    if os.getenv("EXTP_REUSE_DATA"):
+    if extp_params.get("reuse_data"):
         reuse_data = re.match(TRUE_PATTERN, os.getenv("EXTP_REUSE_DATA"),
                               flags=re.IGNORECASE) is not None
+        extp_params.pop("reuse_data")
 
-    return {"name": name,
-            "size": os.getenv("VOL_SIZE"),
-            "origin": os.getenv("EXTP_ORIGIN"),
-            "snapshot_name": os.getenv("VOL_SNAPSHOT_NAME"),
-            "reuse_data": reuse_data,
-            "pool": os.getenv("EXTP_RBD_POOL"),
-            "image_format": os.getenv("EXTP_IMAGE_FORMAT"),
-            "image_features": os.getenv("EXTP_IMAGE_FEATURES"),
-            "stripe_unit": os.getenv("EXTP_STRIPE_UNIT"),
-            "stripe_count": os.getenv("EXTP_STRIPE_COUNT"),
-            }
+    cephx_keys = ['cephx_id', 'cephx_keyring', 'cephx_keyfile']
+    cephx = {}
+    for k in cephx_keys:
+        param = extp_params.get(k)
+        if param:
+            cephx[k[len('cephx_'):]] = param
+            extp_params.pop(k)
+
+    env = {"name": os.getenv("VOL_CNAME"),
+           "size": os.getenv("VOL_SIZE"),
+           "snapshot_name": os.getenv("VOL_SNAPSHOT_NAME"),
+           "cephx": cephx,
+           "reuse_data": reuse_data,
+           }
+    env.update(extp_params)
+    return env
 
 
 def create(env):
@@ -193,11 +236,12 @@ def create(env):
     size = env.get("size")
     origin = env.get("origin")
     reuse_data = env.get("reuse_data")
-    pool = env.get("pool")
+    pool = env.get("rbd_pool")
     image_format = env.get("image_format")
     image_features = env.get("image_features")
     stripe_unit = env.get("stripe_unit")
     stripe_count = env.get("stripe_count")
+    cephx = env.get("cephx")
 
     if reuse_data:
         sys.stderr.write("Reusing previous data for %s\n"
@@ -212,7 +256,7 @@ def create(env):
                          % (RBD.format_name(name, pool=pool), size))
         RBD.create(name, size, pool=pool, image_format=image_format,
                    image_features=image_features, stripe_unit=stripe_unit,
-                   stripe_count=stripe_count)
+                   stripe_count=stripe_count, cephx=cephx)
     return 0
 
 
@@ -239,10 +283,11 @@ def attach(env):
     """
 
     name = env.get("name")
-    pool = env.get("pool")
+    pool = env.get("rbd_pool")
     device = RBD.get_device(name)
+    cephx = env.get("cephx")
     if device is None:
-        device = RBD.map(name, pool=pool)
+        device = RBD.map(name, pool=pool, cephx=cephx)
         sys.stderr.write("Mapped image '%s' to '%s' \n"
                          % (RBD.format_name(name, pool=pool), device))
     else:
@@ -262,10 +307,11 @@ def detach(env):
 
     """
     name = env.get("name")
-    pool = env.get("pool")
+    pool = env.get("rbd_pool")
+    cephx = env.get("cephx")
     device = RBD.get_device(name, pool=pool)
     if device:
-        RBD.unmap(device)
+        RBD.unmap(device, cephx=cephx)
 
     sys.stderr.write("Unmapped %s\n" % RBD.format_name(name, pool=pool))
     return 0
@@ -275,11 +321,12 @@ def grow(env):
     """Grow an existing RBD Image"""
     name = env.get("name")
     size = env.get("size")
-    pool = env.get("pool")
+    pool = env.get("rbd_pool")
+    cephx = env.get("cephx")
 
     sys.stderr.write("Resizing '%s'. New size '%s'\n"
                      % (RBD.format_name(name, pool=pool), size))
-    RBD.resize(name, size, pool=pool)
+    RBD.resize(name, size, pool=pool, cephx=cephx)
     return 0
 
 
@@ -291,9 +338,10 @@ def remove(env):
     for larger images.
     """
     name = env.get("name")
-    pool = env.get("pool")
+    pool = env.get("rbd_pool")
+    cephx = env.get("cephx")
     sys.stderr.write("Deleting '%s'\n" % RBD.format_name(name, pool=pool))
-    RBD.remove(name, pool=pool)
+    RBD.remove(name, pool=pool, cephx=cephx)
     return 0
 
 
