@@ -42,6 +42,7 @@ The following variables are optional:
  - EXTP_IMAGE_FEATURES: The enabled features of the new RBD volume
  - EXTP_STRIPE_UNIT Size (in bytes) of a block of data
  - EXTP_STRIPE_COUNT Number of consecutive objects in a stripe
+ - EXTP_USERSPACE_ONLY Number of consecutive objects in a stripe
 
 The code branches to the correct function, depending on the name (sys.argv[0])
 of the executed script (attach, create, etc).
@@ -212,6 +213,13 @@ def read_env():
                               flags=re.IGNORECASE) is not None
         extp_params.pop("reuse_data")
 
+    userspace_only = False
+    if extp_params.get("userspace_only"):
+        userspace_only = re.match(
+            TRUE_PATTERN, os.getenv("EXTP_USERSPACE_ONLY"),
+            flags=re.IGNORECASE) is not None
+        extp_params.pop("userspace_only")
+
     cephx_keys = ['cephx_id', 'cephx_keyring', 'cephx_keyfile']
     cephx = {}
     for k in cephx_keys:
@@ -225,6 +233,7 @@ def read_env():
            "snapshot_name": os.getenv("VOL_SNAPSHOT_NAME"),
            "cephx": cephx,
            "reuse_data": reuse_data,
+           "userspace_only": userspace_only
            }
     env.update(extp_params)
     return env
@@ -282,19 +291,24 @@ def attach(env):
 
     """
 
+    userspace_only = env.get("userspace_only")
     name = env.get("name")
     pool = env.get("rbd_pool")
-    device = RBD.get_device(name)
-    cephx = env.get("cephx")
-    if device is None:
-        device = RBD.map(name, pool=pool, cephx=cephx)
-        sys.stderr.write("Mapped image '%s' to '%s' \n"
-                         % (RBD.format_name(name, pool=pool), device))
+    if userspace_only:
+        device = ""
     else:
-        sys.stderr.write("Image '%s' already mapped to device '%s' \n"
-                         % (RBD.format_name(name, pool=pool), device))
+        device = RBD.get_device(name)
+        cephx = env.get("cephx")
+        if device is None:
+            device = RBD.map(name, pool=pool, cephx=cephx)
+            sys.stderr.write("Mapped image '%s' to '%s' \n"
+                             % (RBD.format_name(name, pool=pool), device))
+        else:
+            sys.stderr.write("Image '%s' already mapped to device '%s' \n"
+                             % (RBD.format_name(name, pool=pool), device))
 
     sys.stdout.write("%s" % device)
+    sys.stdout.write("\nkvm:rbd:%s" % RBD.format_name(name, pool=pool))
     return 0
 
 
@@ -306,14 +320,17 @@ def detach(env):
     If mapping doesn't exist at all, it does nothing.
 
     """
-    name = env.get("name")
-    pool = env.get("rbd_pool")
-    cephx = env.get("cephx")
-    device = RBD.get_device(name, pool=pool)
-    if device:
-        RBD.unmap(device, cephx=cephx)
+    userspace_only = env.get("userspace_only")
+    if not userspace_only:
+        name = env.get("name")
+        pool = env.get("rbd_pool")
+        cephx = env.get("cephx")
+        device = RBD.get_device(name, pool=pool)
+        if device:
+            RBD.unmap(device, cephx=cephx)
 
-    sys.stderr.write("Unmapped %s\n" % RBD.format_name(name, pool=pool))
+        sys.stderr.write("Unmapped %s\n" % RBD.format_name(name, pool=pool))
+
     return 0
 
 
