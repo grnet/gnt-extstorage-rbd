@@ -43,6 +43,7 @@ The following variables are optional:
  - EXTP_STRIPE_UNIT Size (in bytes) of a block of data
  - EXTP_STRIPE_COUNT Number of consecutive objects in a stripe
  - EXTP_USERSPACE_ONLY Number of consecutive objects in a stripe
+ - EXTP_USP_* Parameters to append to the userspace URI
 
 The code branches to the correct function, depending on the name (sys.argv[0])
 of the executed script (attach, create, etc).
@@ -59,6 +60,7 @@ import re
 
 TRUE_PATTERN = '^(yes|true|on|1|set)$'
 PREFIX_EXTP = 'EXTP_'
+PREFIX_USP = 'usp_'
 
 
 def cmd_open(cmd, bufsize=-1, env=None):
@@ -228,12 +230,19 @@ def read_env():
             cephx[k[len('cephx_'):]] = param
             extp_params.pop(k)
 
+    userspace_params = {}
+    for p, v in extp_params.iteritems():
+        if p.startswith(PREFIX_USP):
+            userspace_params[p[len(PREFIX_USP):]] = v
+            extp_params.pop(p)
+
     env = {"name": os.getenv("VOL_CNAME"),
            "size": os.getenv("VOL_SIZE"),
            "snapshot_name": os.getenv("VOL_SNAPSHOT_NAME"),
            "cephx": cephx,
            "reuse_data": reuse_data,
-           "userspace_only": userspace_only
+           "userspace_only": userspace_only,
+           "userspace_params": userspace_params
            }
     env.update(extp_params)
     return env
@@ -281,11 +290,13 @@ def snapshot(env):
     return 1
 
 
-def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None):
+def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None,
+                    **kwargs):
     """Create a QEMU RBD URI for the specific image / environment"""
 
     uri = 'kvm:rbd:%s' % RBD.format_name(name, pool=pool)
     extra_conf = ''
+    # Only id is supported for cephx authentication, for the userspace URI.
     if cephx['id']:
         extra_conf += ':id=%s' % cephx['id']
     if conf_file:
@@ -293,6 +304,8 @@ def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None):
     # TODO: we need to revisit this, to support more caching modes correctly.
     if cache in ['writeback']:
         extra_conf += ':rbd_cache=true'
+    for k, v in kwargs.iteritems():
+        extra_conf += ':%s=%s' % (k, v)
 
     if extra_conf:
         uri += extra_conf
@@ -315,6 +328,7 @@ def attach(env):
     pool = env.get("rbd_pool")
     cephx = env.get("cephx")
     cache = env.get("cache")
+    userspace_params = env.get("userspace_params")
     if userspace_only:
         device = ""
     else:
@@ -329,7 +343,8 @@ def attach(env):
                              % (RBD.format_name(name, pool=pool), device))
 
     sys.stdout.write("%s" % device)
-    qemu_uri = format_qemu_uri(name, pool=pool, cephx=cephx, cache=cache)
+    qemu_uri = format_qemu_uri(name, pool=pool, cephx=cephx, cache=cache,
+                               **userspace_params)
     sys.stdout.write("\n%s" % qemu_uri)
 
     return 0
