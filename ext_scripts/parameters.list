@@ -5,3 +5,7 @@ image_format The image format of the new RBD volume
 image_features The enabled features of the new RBD volume
 stripe_unit Size (in bytes) of a block of data
 stripe_count Number of consecutive objects in a stripe
+cephx_id Specifies the username (without the client. prefix) to use with the map command
+cephx_keyring Specifies a keyring file containing a secret for the specified user to use with the map command
+cephx_keyfile Specifies a file containing the secret key of --id user to use with the map command
+userspace_only Number of consecutive objects in a stripe
