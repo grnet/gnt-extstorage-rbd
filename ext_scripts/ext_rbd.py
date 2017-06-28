@@ -281,7 +281,7 @@ def snapshot(env):
     return 1
 
 
-def format_qemu_uri(name, pool=None, cephx=None, conf_file=None):
+def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None):
     """Create a QEMU RBD URI for the specific image / environment"""
 
     uri = 'kvm:rbd:%s' % RBD.format_name(name, pool=pool)
@@ -290,6 +290,9 @@ def format_qemu_uri(name, pool=None, cephx=None, conf_file=None):
         extra_conf += ':id=%s' % cephx['id']
     if conf_file:
         extra_conf += ':conf=%s' % conf_file
+    # TODO: we need to revisit this, to support more caching modes correctly.
+    if cache in ['writeback']:
+        extra_conf += ':rbd_cache=true'
 
     if extra_conf:
         uri += extra_conf
@@ -311,6 +314,7 @@ def attach(env):
     name = env.get("name")
     pool = env.get("rbd_pool")
     cephx = env.get("cephx")
+    cache = env.get("cache")
     if userspace_only:
         device = ""
     else:
@@ -325,7 +329,7 @@ def attach(env):
                              % (RBD.format_name(name, pool=pool), device))
 
     sys.stdout.write("%s" % device)
-    qemu_uri = format_qemu_uri(name, pool=pool, cephx=cephx)
+    qemu_uri = format_qemu_uri(name, pool=pool, cephx=cephx, cache=cache)
     sys.stdout.write("\n%s" % qemu_uri)
 
     return 0
