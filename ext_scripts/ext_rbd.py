@@ -281,6 +281,22 @@ def snapshot(env):
     return 1
 
 
+def format_qemu_uri(name, pool=None, cephx=None, conf_file=None):
+    """Create a QEMU RBD URI for the specific image / environment"""
+
+    uri = 'kvm:rbd:%s' % RBD.format_name(name, pool=pool)
+    extra_conf = ''
+    if cephx['id']:
+        extra_conf += ':id=%s' % cephx['id']
+    if conf_file:
+        extra_conf += ':conf=%s' % conf_file
+
+    if extra_conf:
+        uri += extra_conf
+
+    return uri
+
+
 def attach(env):
     """
     Map an existing RBD Image to a block device
@@ -294,6 +310,7 @@ def attach(env):
     userspace_only = env.get("userspace_only")
     name = env.get("name")
     pool = env.get("rbd_pool")
+    cephx = env.get("cephx")
     if userspace_only:
         device = ""
     else:
@@ -308,7 +325,9 @@ def attach(env):
                              % (RBD.format_name(name, pool=pool), device))
 
     sys.stdout.write("%s" % device)
-    sys.stdout.write("\nkvm:rbd:%s" % RBD.format_name(name, pool=pool))
+    qemu_uri = format_qemu_uri(name, pool=pool, cephx=cephx)
+    sys.stdout.write("\n%s" % qemu_uri)
+
     return 0
 
 
