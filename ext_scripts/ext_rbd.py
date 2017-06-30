@@ -301,9 +301,17 @@ def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None,
         extra_conf += ':id=%s' % cephx['id']
     if conf_file:
         extra_conf += ':conf=%s' % conf_file
-    # TODO: we need to revisit this, to support more caching modes correctly.
-    if cache in ['writeback']:
+    # We need to set these here to override the settings in 'ceph.conf'
+    # They are consistent with how QEMU treats the cache settings for an RBD
+    # drive.
+    if cache in ['writeback', 'writethrough', 'unsafe']:
         extra_conf += ':rbd_cache=true'
+    if cache == 'writethrough':
+        # To ensure that the cache is set in writethrough mode.
+        # QEMU alone, does not set this value when 'cache=writethrough' is set,
+        # although if 'ceph.conf' does not says otherwise, 'rbd_cache' is set
+        # to true.
+        extra_conf += ':rbd_cache_max_dirty=0'
     for k, v in kwargs.iteritems():
         extra_conf += ':%s=%s' % (k, v)
 
