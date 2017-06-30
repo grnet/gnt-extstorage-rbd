@@ -297,7 +297,7 @@ def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None,
     uri = 'kvm:rbd:%s' % RBD.format_name(name, pool=pool)
     extra_conf = ''
     # Only id is supported for cephx authentication, for the userspace URI.
-    if cephx['id']:
+    if cephx.get('id'):
         extra_conf += ':id=%s' % cephx['id']
     if conf_file:
         extra_conf += ':conf=%s' % conf_file
