@@ -39,7 +39,7 @@ The following variables are optional:
  - EXTP_CEPHX_KEYFILE Specifies a file containing the secret key of --id user
    to use with the map command
  - EXTP_IMAGE_FORMAT: The image format of the new RBD volume
- - EXTP_IMAGE_FEATURES: The enabled features of the new RBD volume
+ - EXTP_IMAGE_FEATURE: The enabled features of the new RBD volume
  - EXTP_STRIPE_UNIT Size (in bytes) of a block of data
  - EXTP_STRIPE_COUNT Number of consecutive objects in a stripe
  - EXTP_USERSPACE_ONLY Number of consecutive objects in a stripe
@@ -151,7 +151,7 @@ class RBD(object):
         return None
 
     @staticmethod
-    def create(image, size, pool=None, image_format=None, image_features=None,
+    def create(image, size, pool=None, image_format=None, image_feature=None,
                stripe_unit=None, stripe_count=None, cephx=None):
         """ Map an image to an RBD device """
 
@@ -161,9 +161,9 @@ class RBD(object):
         if image_format is not None:
             args.append('--image-format')
             args.append(str(image_format))
-        if image_features is not None:
-            args.append('--image-features')
-            args.append(str(image_features))
+        if image_feature is not None:
+            args.append('--image-feature')
+            args.append(str(image_feature))
         if stripe_unit is not None:
             args.append('--stripe-unit')
             args.append(str(stripe_unit))
@@ -256,7 +256,7 @@ def create(env):
     reuse_data = env.get("reuse_data")
     pool = env.get("rbd_pool")
     image_format = env.get("image_format")
-    image_features = env.get("image_features")
+    image_feature = env.get("image_feature")
     stripe_unit = env.get("stripe_unit")
     stripe_count = env.get("stripe_count")
     cephx = env.get("cephx")
@@ -273,7 +273,7 @@ def create(env):
         sys.stderr.write("Creating volume '%s' of size '%s'\n"
                          % (RBD.format_name(name, pool=pool), size))
         RBD.create(name, size, pool=pool, image_format=image_format,
-                   image_features=image_features, stripe_unit=stripe_unit,
+                   image_feature=image_feature, stripe_unit=stripe_unit,
                    stripe_count=stripe_count, cephx=cephx)
     return 0
 

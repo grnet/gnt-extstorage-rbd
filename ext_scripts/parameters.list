@@ -2,7 +2,7 @@ origin Snapshot to create the image from
 reuse_data Whether or not to create a new RBD volume on create
 rbd_pool RBD pool to use for the RBD volumes
 image_format The image format of the new RBD volume
-image_features The enabled features of the new RBD volume
+image_feature The enabled features of the new RBD volume
 stripe_unit Size (in bytes) of a block of data
 stripe_count Number of consecutive objects in a stripe
 cephx_id Specifies the username (without the client. prefix) to use with the map command
