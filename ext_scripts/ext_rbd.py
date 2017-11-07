@@ -42,7 +42,7 @@ The following variables are optional:
  - EXTP_IMAGE_FEATURE: The enabled features of the new RBD volume
  - EXTP_STRIPE_UNIT Size (in bytes) of a block of data
  - EXTP_STRIPE_COUNT Number of consecutive objects in a stripe
- - EXTP_USERSPACE_ONLY Number of consecutive objects in a stripe
+ - EXTP_USERSPACE_ONLY Set if only userspace access is requested
  - EXTP_USP_* Parameters to append to the userspace URI
 
 The code branches to the correct function, depending on the name (sys.argv[0])
@@ -296,7 +296,7 @@ def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None,
 
     uri = 'kvm:rbd:%s' % RBD.format_name(name, pool=pool)
     extra_conf = ''
-    # Only id is supported for cephx authentication, for the userspace URI.
+    # Only 'id' is supported for cephx authentication in the userspace URI.
     if cephx.get('id'):
         extra_conf += ':id=%s' % cephx['id']
     if conf_file:
@@ -308,7 +308,7 @@ def format_qemu_uri(name, pool=None, cephx=None, conf_file=None, cache=None,
         extra_conf += ':rbd_cache=true'
     if cache == 'writethrough':
         # To ensure that the cache is set in writethrough mode.
-        # QEMU alone, does not set this value when 'cache=writethrough' is set,
+        # QEMU alone does not set this value when 'cache=writethrough' is set,
         # although if 'ceph.conf' does not says otherwise, 'rbd_cache' is set
         # to true.
         extra_conf += ':rbd_cache_max_dirty=0'
